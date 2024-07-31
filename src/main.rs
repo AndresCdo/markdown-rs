@@ -1,29 +1,23 @@
-// http://gtk-rs.org
-
 extern crate comrak;
 extern crate gio;
 extern crate gtk;
-#[macro_use]
-extern crate horrorshow;
-extern crate sourceview;
 extern crate webkit2gtk;
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use gtk::{show_uri_on_window, Builder};
+use webkit2gtk::{PolicyDecisionExt, WebViewExt};
+use preview::Preview;
+use utils::{buffer_to_string, configure_sourceview, open_file, save_file, set_title};
+
+// http://gtk-rs.org
+
+use gio::prelude::*;
+use gtk::prelude::*;
 
 mod preview;
 #[macro_use]
 mod utils;
-
-use gio::prelude::*;
-use gtk::Builder;
-use gtk::functions::show_uri_on_window;
-use gtk::prelude::*;
-
-use webkit2gtk::*;
-
-use std::env::args;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use preview::Preview;
-use utils::{buffer_to_string, configure_sourceview, open_file, save_file, set_title};
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -44,10 +38,10 @@ fn build_system_menu(
 
     let quit = gio::SimpleAction::new("quit", None);
     let about = gio::SimpleAction::new("about", None);
-    quit.connect_activate(clone!(window => move |_, _| {
+    quit.connect_activate(clone!(@strong window => move |_, _| {
         window.close();
     }));
-    about.connect_activate(clone!(about_dialog => move |_, _| {
+    about.connect_activate(clone!(@strong about_dialog => move |_, _| {
         about_dialog.show();
     }));
 
@@ -74,17 +68,23 @@ fn build_ui(application: &gtk::Application) {
     let text_buffer: sourceview::Buffer = builder.get_object("text_buffer").unwrap();
     configure_sourceview(&text_buffer);
 
-    let web_context = WebContext::get_default().unwrap();
-    let web_view = WebView::with_context(&web_context);
+    let web_context = webkit2gtk::WebContext::get_default().unwrap();
+    let web_view = webkit2gtk::WebView::with_context(&web_context);
 
     let markdown_view: gtk::ScrolledWindow = builder.get_object("scrolled_window_right").unwrap();
     markdown_view.add(&web_view);
 
     let file_open: gtk::FileChooserDialog = builder.get_object("file_open").unwrap();
-    file_open.add_buttons(&[("Open", gtk::ResponseType::Ok.into()), ("Cancel", gtk::ResponseType::Cancel.into())]);
+    file_open.add_buttons(&[
+        ("Open", gtk::ResponseType::Ok.into()),
+        ("Cancel", gtk::ResponseType::Cancel.into()),
+    ]);
 
     let file_save: gtk::FileChooserDialog = builder.get_object("file_save").unwrap();
-    file_save.add_buttons(&[("Save", gtk::ResponseType::Ok.into()), ("Cancel", gtk::ResponseType::Cancel.into())]);
+    file_save.add_buttons(&[
+        ("Save", gtk::ResponseType::Ok.into()),
+        ("Cancel", gtk::ResponseType::Cancel.into()),
+    ]);
 
     let about_dialog: gtk::AboutDialog = builder.get_object("about_dialog").unwrap();
     about_dialog.set_program_name(NAME);
@@ -93,12 +93,11 @@ fn build_ui(application: &gtk::Application) {
     about_dialog.set_comments(Some(DESCRIPTION));
 
     let preview = Preview::new();
-    text_buffer.connect_changed(clone!(web_view, preview => move |buffer| {
+    text_buffer.connect_changed(clone!(@strong web_view, preview => move |buffer| {
         let markdown = buffer_to_string(buffer);
         web_view.load_html(&preview.render(&markdown), None);
     }));
-
-    web_view.connect_decide_policy(clone!(window => move |view, decision, _| {
+    web_view.connect_decide_policy(clone!(@strong window => move |view, decision, _| {
         let uri = view.get_uri().unwrap();
         if uri != "about:blank" {
             let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
@@ -107,26 +106,28 @@ fn build_ui(application: &gtk::Application) {
         }
         true
     }));
-    web_view.connect_load_failed(move |_, _, _, _| true);
+    web_view.connect_load_failed(|_, _, _, _| true);
 
-    open_button.connect_clicked(clone!(file_open, header_bar, text_buffer => move |_| {
-        file_open.show();
-        if file_open.run() == gtk::ResponseType::Ok.into() {
-            let filename = file_open.get_filename().expect("Couldn't get filename");
+    open_button.connect_clicked(
+        clone!(@strong file_open, header_bar, text_buffer => move |_| {
+            file_open.show();
+            if file_open.run() == gtk::ResponseType::Ok.into() {
+                if let Some(filename) = file_open.get_filename() {
+                    set_title(&header_bar, &filename);
+                    let contents = open_file(&filename);
+                    text_buffer.set_text(&contents);
+                }
+            }
+            file_open.hide();
+        }),
+    );
 
-            set_title(&header_bar, &filename);
-            text_buffer.set_text(&open_file(&filename));
-        }
-        file_open.hide();
-    }));
-
-    save_button.connect_clicked(clone!(file_save, text_buffer => move |_| {
+    save_button.connect_clicked(clone!(@strong file_save, text_buffer => move |_| {
         file_save.show();
         if file_save.run() == gtk::ResponseType::Ok.into() {
-            let filename = file_save.get_filename().expect("Couldn't get filename");
-
-            set_title(&header_bar, &filename);
-            save_file(&filename, &text_buffer);
+            if let Some(filename) = file_save.get_filename() {
+                save_file(&filename, &text_buffer);
+            }
         }
         file_save.hide();
     }));
@@ -147,15 +148,23 @@ fn build_ui(application: &gtk::Application) {
 }
 
 fn main() {
-    let application =
-        gtk::Application::new(Some("com.github.markdown-rs"), gio::ApplicationFlags::empty())
-            .expect("Initialization failed...");
+    let application = gtk::Application::new(
+        Some("com.github.markdown-rs"),
+        gio::ApplicationFlags::empty(),
+    )
+    .expect("Initialization failed...");
 
     application.connect_startup(move |app| {
         build_ui(app);
+
+        let quit = gio::SimpleAction::new("quit", None);
+        quit.connect_activate(clone!(@strong app => move |_, _| {
+            app.quit();
+        }));
+        app.add_action(&quit);
     });
 
     application.connect_activate(|_| {});
 
-    application.run(&args().collect::<Vec<_>>());
+    application.run(&std::env::args().collect::<Vec<_>>());
 }
