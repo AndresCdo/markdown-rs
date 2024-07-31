@@ -2,8 +2,10 @@ use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
 
+extern crate sourceview;
+
 use gtk::*;
-use sourceview::*;
+use self::sourceview::*;
 use std::path::PathBuf;
 
 pub fn set_title(header_bar: &HeaderBar, path: &PathBuf) {
@@ -52,18 +54,27 @@ pub fn configure_sourceview(buff: &Buffer) {
 
 // http://gtk-rs.org/tuto/closures
 macro_rules! clone {
-    (@param _) => ( _ );
-    (@param $x:ident) => ( $x );
-    ($($n:ident),+ => move || $body:expr) => (
+    // Match `@strong` token and clone the variable
+    (@strong $($n:ident),+ => move || $body:expr) => {
         {
-            $( let $n = $n.clone(); )+
+            $(let $n = $n.clone();)+
             move || $body
         }
-    );
-    ($($n:ident),+ => move |$($p:tt),+| $body:expr) => (
+    };
+    (@strong $($n:ident),+ => move |$($p:pat),*| $body:expr) => {
         {
-            $( let $n = $n.clone(); )+
-            move |$(clone!(@param $p),)+| $body
+            $(let $n = $n.clone();)+
+            move |$($p),*| $body
         }
-    );
+    };
+    (@strong $($n:ident),+ => async move { $($body:tt)* }) => {
+        {
+            $(let $n = $n.clone();)+
+            async move { $($body)* }
+        }
+    };
+    // Fallback for other cases
+    ($($body:tt)*) => {
+        $($body)*
+    };
 }
