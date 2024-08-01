@@ -1,19 +1,15 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+use webkit2gtk::{PolicyDecisionExt, WebViewExt};
+use preview::Preview;
+use utils::{buffer_to_string, configure_sourceview, open_file, save_file, set_title};
+
 extern crate comrak;
 extern crate gio;
 extern crate gtk;
 extern crate webkit2gtk;
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use gtk::{show_uri_on_window, Builder};
-use webkit2gtk::{PolicyDecisionExt, WebViewExt};
-use preview::Preview;
-use utils::{buffer_to_string, configure_sourceview, open_file, save_file, set_title};
-
-// http://gtk-rs.org
-
 use gio::prelude::*;
-use gtk::prelude::*;
+use gtk::{prelude::*, show_uri_on_window};
 
 mod preview;
 #[macro_use]
@@ -24,16 +20,10 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
-fn build_system_menu(
-    application: &gtk::Application,
-    window: &gtk::ApplicationWindow,
-    about_dialog: &gtk::AboutDialog,
-) {
+fn build_system_menu(application: &gtk::Application, window: &gtk::ApplicationWindow, about_dialog: &gtk::AboutDialog) {
     let menu = gio::Menu::new();
-
     menu.append(Some("About"), Some("app.about"));
     menu.append(Some("Quit"), Some("app.quit"));
-
     application.set_app_menu(Some(&menu));
 
     let quit = gio::SimpleAction::new("quit", None);
@@ -51,10 +41,7 @@ fn build_system_menu(
 
 fn build_ui(application: &gtk::Application) {
     let glade_src = include_str!("gtk-ui.glade");
-    let builder = Builder::new();
-    builder
-        .add_from_string(glade_src)
-        .expect("Builder couldn't add from string");
+    let builder = gtk::Builder::from_string(glade_src);
 
     let window: gtk::ApplicationWindow = builder.get_object("window").expect("Couldn't get window");
     window.set_application(Some(application));
