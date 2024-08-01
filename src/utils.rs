@@ -1,11 +1,11 @@
 use std::fs::File;
-use std::io::BufReader;
 use std::io::prelude::*;
+use std::io::BufReader;
 
 extern crate sourceview;
 
-use gtk::*;
 use self::sourceview::*;
+use gtk::*;
 use std::path::PathBuf;
 
 pub fn set_title(header_bar: &HeaderBar, path: &PathBuf) {
@@ -38,7 +38,8 @@ pub fn open_file(filename: &PathBuf) -> String {
 pub fn save_file(filename: &PathBuf, text_buffer: &Buffer) {
     let contents = buffer_to_string(text_buffer);
     let mut file = File::create(filename).expect("Couldn't save file");
-    file.write_all(contents.as_bytes()).expect("File save failed");
+    file.write_all(contents.as_bytes())
+        .expect("File save failed");
 }
 
 pub fn configure_sourceview(buff: &Buffer) {
